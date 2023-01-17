@@ -8,7 +8,7 @@
 fitness_criterion     = max
 
 # genome kept for next gen when >= fitness_threshold
-fitness_threshold     = 0.0
+fitness_threshold     = 10000.0
 
 pop_size              = 50
 reset_on_extinction   = 0
@@ -21,7 +21,7 @@ reset_on_extinction   = 0
 # angle + 8 dist
 #num_inputs              = 9
 
-# angle vx vy ax ay + 8 dist
+# former_thrust, former_left, former_right, angle vx vy ax ay + 8 dist
 num_inputs              = 16
 
 # thrust angle vx vy ax ay + 8 dist
@@ -33,10 +33,10 @@ num_outputs             = 3
 # -----------------------------------------------------------
 # from this no very useful to change
 
-#activation_default      = clamped
-#activation_options      = clamped
-activation_default      = sigmoid
-activation_options      = sigmoid
+activation_default      = clamped
+activation_options      = clamped
+#activation_default      = sigmoid
+#activation_options      = sigmoid
 
 initial_connection      = partial_direct 0.5
 feed_forward            = True

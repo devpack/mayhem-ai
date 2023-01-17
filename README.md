@@ -22,7 +22,7 @@ It was then ported to [Raspberry Pi](https://www.raspberrypi.org/) by [Martin O'
 
 It was early time this game had its own Python version. [Pygame](https://www.pygame.org/docs) SDL wrapper has been used as backend.
 
-The ultimate goal porting it to Python is to create a friendly AI environment (like [Gym](https://gym.openai.com/envs/#atari)) which could easily be used with [Keras](https://keras.io) deep learning framework. AI players in Mayhem are coming !
+The ultimate goal porting it to Python is to create a friendly AI environment (like [Gym](https://gym.openai.com/envs/#atari)) which could easily be used with deep learning frameworks. AI players in Mayhem are coming !
 
 ----
 

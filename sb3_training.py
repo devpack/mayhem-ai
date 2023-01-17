@@ -3,7 +3,7 @@
 
 """
 
-import argparse
+import argparse, sys
 
 from stable_baselines3 import A2C, PPO
 from stable_baselines3.common.env_checker import check_env
@@ -49,16 +49,27 @@ env = MayhemEnv(game_window,
 if 1:
     check_env(env)
 
+#print("action space=", env.action_space)
+#print("obs space=", env.observation_space)
+
+#from gym.wrappers.normalize import NormalizeObservation
+#wrapped_env = NormalizeObservation(env)
+#print("wrapped obs space=", wrapped_env.observation_space)
+
+#sys.exit(0)
+
 #model_type = "A2C"
 model_type = "PPO"
 
+# load
 LOAD_MODEL_NAME = None  
-LOAD_MODEL_NAME = "920000.zip"    
+#LOAD_MODEL_NAME = "1540000.zip"    
 DETERMINISTIC = 0
-
+MAX_FRAME = 20000
 EPISODES_PLAY = 5
 
-TIMESTEPS = 10000
+# train
+TIMESTEPS = 20000
 EPISODES_TRAIN = 100
 
 if not LOAD_MODEL_NAME:
@@ -75,7 +86,7 @@ if not os.path.exists(logdir):
 
 obs = env.reset()
 
-# load
+# --- load
 if LOAD_MODEL_NAME:
     model_path = f"{models_dir}/%s" % LOAD_MODEL_NAME
 
@@ -90,10 +101,10 @@ if LOAD_MODEL_NAME:
 
         while not done:
             action, _states = model.predict(obs, deterministic=DETERMINISTIC)
-            obs, rewards, done, info = env.step(action, max_frame=1000000000000000)
+            obs, rewards, done, info = env.step(action, max_frame=MAX_FRAME)
             env.render(collision_check=False)
 
-# train
+# --- train
 else:
     if model_type == "A2C":
         model = A2C('MlpPolicy', env, verbose=1, tensorboard_log=logdir)

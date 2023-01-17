@@ -12,7 +12,7 @@ It was then ported to Raspberry Pi by Martin O'Hanlon (https://github.com/martin
 
 It was early time this game had its own Python version. Pygame (https://www.pygame.org/docs) SDL wrapper has been used as backend.
 
-The ultimate goal porting it to Python is to create a friendly AI environment (like Gym (https://gym.openai.com/envs/#atari)) which could easily be used with Keras (https://keras.io) deep learning framework. AI players in Mayhem are coming !
+The ultimate goal porting it to Python is to create a friendly AI environment (like Gym (https://gym.openai.com/envs/#atari)) which could easily be used with deep learning frameworks. AI players in Mayhem are coming !
 
 Anthony Prieur
 anthony.prieur@gmail.com
@@ -45,24 +45,6 @@ try:
 except ImportError:
     import pickle
 
-try:
-    import neat
-    NEAT_FOUND = True
-except ImportError:
-    NEAT_FOUND = False
-
-try:
-    import cv2
-    CV2_FOUND = True
-except ImportError:
-    CV2_FOUND = False
-
-try:
-    from matplotlib import pyplot as plt
-    MPL_FOUND = True
-except ImportError:
-    MPL_FOUND = False
-
 import gym
 from gym import spaces
 
@@ -76,8 +58,20 @@ DEBUG_TEXT_XPOS = 0
 
 MAX_FPS = 60
 
+# -------------------------------------------------------------------------------------------------
+# The map is splitted into 24 zones, 4x * 6y
+# 0 1 2 3
+# 4 5 6 7
+# ....
+# 20 21 22 23
+
 MAP_WIDTH  = 792
 MAP_HEIGHT = 1200
+
+ZONE_X_NUM  = 4
+ZONE_Y_NUM  = 6
+ZONE_X_SIZE = MAP_WIDTH  / ZONE_X_NUM
+ZONE_Y_SIZE = MAP_HEIGHT / ZONE_Y_NUM
 
 WHITE    = (255, 255, 255)
 RED      = (255, 0, 0)
@@ -196,6 +190,9 @@ SHIP_4_PIC_SHIELD = os.path.join("assets", "default", "ship4_shield_256c.bmp")
 START_POSITIONS = [(430, 730), (473, 195), (647, 227), (645, 600), (647, 950), (510, 1070), (298, 1037), \
                    (273, 777), (275, 506), (70, 513), (89, 208), (434, 452), (289, 153)]
 
+# NN input
+NORMALIZE_INPUT = 1
+
 # -------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------
@@ -274,6 +271,8 @@ class Ship():
         self.lives = lives
         self.shots = []
 
+        self.visited_zones = set()
+
         # sound
         self.sound_thrust = pygame.mixer.Sound(SOUND_THURST)
         self.sound_explod = pygame.mixer.Sound(SOUND_EXPLOD)
@@ -327,6 +326,8 @@ class Ship():
         self.thrust_pressed = False
         self.left_pressed   = False
         self.right_pressed  = False
+
+        self.visited_zones = set()
 
         self.lives -= 1
 
@@ -450,7 +451,6 @@ class Ship():
 
 
         self.do_move(env, self.left_pressed, self.right_pressed, up_pressed, down_pressed, self.thrust_pressed, shoot_pressed, shield_pressed)
-
 
     def do_move(self, env, left_pressed, right_pressed, up_pressed, down_pressed, thrust_pressed, shoot_pressed, shield_pressed):
 
@@ -609,7 +609,7 @@ class Ship():
             self.ypos = int(self.yposprecise)
 
             # landed ?
-            if env.mode != "training": # at the moment no landing in training (because NEAT algo is too lazy !)
+            if env.mode != "training": # at the moment no landing in training (because NEAT algo is too lazy)
                 self.is_landed(env)
 
         #
@@ -620,6 +620,9 @@ class Ship():
         rect = self.image_rotated.get_rect()
         self.rot_xoffset = int( ((SHIP_SPRITE_SIZE - rect.width)/2) )  # used in draw() and collide_map()
         self.rot_yoffset = int( ((SHIP_SPRITE_SIZE - rect.height)/2) ) # used in draw() and collide_map()
+
+        # number of visited zones for the reward
+        self.update_visited_zones()
 
     def plot_shots(self, map_buffer):
         for shot in list(self.shots): # copy of self.shots
@@ -875,6 +878,16 @@ class Ship():
 
         return wall_distances
 
+    # The map is splitted into 24 zones, 4x * 6y
+    # 0 1 2 3
+    # 4 5 6 7
+    # ....
+    # 20 21 22 23
+    def update_visited_zones(self):
+        zone_number = (self.xpos // ZONE_X_SIZE) + ((self.ypos // ZONE_Y_SIZE) * ZONE_X_NUM)
+        self.visited_zones.add(zone_number)
+        #print(self.visited_zones)
+
 # -------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------
@@ -1020,6 +1033,8 @@ class MayhemEnv(gym.Env):
                         sys.exit(0)
                     elif event.key == pygame.K_p:
                         self.paused = not self.paused
+                    elif event.key == pygame.K_DELETE:
+                        self.ship_1.explod = True
 
             if not self.paused:
 
@@ -1110,6 +1125,8 @@ class MayhemEnv(gym.Env):
                         sys.exit(0)
                     elif event.key == pygame.K_p:
                         self.paused = not self.paused
+                    elif event.key == pygame.K_DELETE:
+                        self.ship_1.explod = True
 
             if not self.paused:            
                 # map copy (TODO reduce)
@@ -1180,6 +1197,10 @@ class MayhemEnv(gym.Env):
 
                     reward = self.myfont.render('Reward: %s' % self.reward, False, (255, 255, 255))
                     self.game.window.blit(reward, (DEBUG_TEXT_XPOS + 5, 155))  
+
+                    zones = self.myfont.render('Zones: %s' % str(len(self.ship_1.visited_zones)), False, (255, 255, 255))
+                    self.game.window.blit(zones, (DEBUG_TEXT_XPOS + 5, 180))  
+
                 except:
                     pass 
 
@@ -1189,7 +1210,6 @@ class MayhemEnv(gym.Env):
     # training only
     def reset(self):
         self.frames = 0
-        self.total_dist = 0
         self.done = False
         self.paused = False
         self.ship_1.reset(self)
@@ -1246,12 +1266,10 @@ class MayhemEnv(gym.Env):
         # https://machinelearningmastery.com/how-to-improve-neural-network-stability-and-modeling-performance-with-data-scaling/
         # min-max: (((x - min) / (max - min)) * (end - start)) + start (typically start=0, end=1)
 
-        NORMALIZE = 1
-
         if self.sensor == "ray":
             wall_distances = self.ship_1.ray_sensor(self)
 
-            if NORMALIZE:
+            if NORMALIZE_INPUT:
                 for i, dist in enumerate(wall_distances):
                     #wall_distances[i] = dist / RAY_MAX_LEN # [0, 1]
                     wall_distances[i] = ((dist / RAY_MAX_LEN)*2) - 1 # [-1, 1]
@@ -1260,7 +1278,7 @@ class MayhemEnv(gym.Env):
         #print(wall_distances)
 
         # normalized ship physic params
-        if NORMALIZE:
+        if NORMALIZE_INPUT:
             #angle_norm = self.ship_1.angle / (360. - SHIP_ANGLESTEP)
             angle_norm = ((self.ship_1.angle / (360. - SHIP_ANGLESTEP)) * 2) - 1
 
@@ -1295,7 +1313,7 @@ class MayhemEnv(gym.Env):
 
         elif self.sensor == "pic":
             if self.frame_pic is not None:
-                if NORMALIZE:
+                if NORMALIZE_INPUT:
                     new_state.extend( ((self.frame_pic/255)*2)-1 )
                     #new_state.extend( self.frame_pic/255 )
                 else:
@@ -1316,43 +1334,42 @@ class MayhemEnv(gym.Env):
                     collision = True
                     break
 
-        # --- done ?
-        done = self.ship_1.explod
-        done |= self.frames > max_frame
-        done |= collision
-
         # --- revard
-        #self.reward = 1 # one frame
+
+        done = self.ship_1.explod
+        done |= (self.frames > max_frame)
+        done |= collision
 
         # ship has not moved ?
         #d = math.sqrt((old_xpos - self.ship_1.xposprecise)**2 + (old_ypos - self.ship_1.yposprecise)**2)
         self.step_dist = np.linalg.norm(np.array((old_xpos, old_ypos)) - np.array((self.ship_1.xposprecise, self.ship_1.yposprecise)))
 
-        #print(d)
-        #if d < 1.0:
-        #    self.reward = 0
-        #else:
-        #    self.total_dist += d
-
         #d_end = math.sqrt((self.ship_1.init_xpos - self.ship_1.xpos)**2 + (self.ship_1.init_ypos - self.ship_1.ypos)**2)
         #d_end = np.linalg.norm(np.array((self.ship_1.init_xpos, self.ship_1.init_ypos)) - np.array((self.ship_1.xpos, self.ship_1.ypos)))
 
-        if self.step_dist < 0.05:
-            self.reward = -self.step_dist*10
-        else:
-            self.reward = self.step_dist        
+        self.reward = 0
 
-        #print("d=", d)
+        if 0:
+            if self.step_dist < 0.05:
+                self.reward = -self.step_dist
+            else:
+                self.reward = self.step_dist        
 
-        if collision or self.ship_1.explod:
-            self.reward = -1000
+            #print("d=", d)
 
-        #if done:
-        #    self.reward += self.total_dist
-        #    #self.reward += d_end*2
+        if done:
+            # visited zone
+            self.number_visited_zone = len(self.ship_1.visited_zones)
+            self.reward = self.number_visited_zone * 200
+
+            if self.number_visited_zone == 1:
+                self.reward = -500
+
+            # if ship exploded => bad reward
+            if collision or self.ship_1.explod:
+                self.reward -= 1000
 
         self.frames += 1
-        #print(self.total_dist)
 
         if self.sensor == "ray":
             obs = np.array(new_state, dtype=np.float32)
@@ -1386,6 +1403,8 @@ class MayhemEnv(gym.Env):
                     sys.exit(0)
                 elif event.key == pygame.K_p:
                     self.paused = not self.paused
+                elif event.key == pygame.K_DELETE:
+                    self.ship_1.explod = True
 
         if not self.paused:
 
