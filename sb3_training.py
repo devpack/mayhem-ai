@@ -28,8 +28,8 @@ from mayhem import *
 # -------------------------------------------------------------------------------------------------
 
 DETERMINISTIC     = False
-MAX_FRAME_TO_PLAY = 30000
-NB_TEST_RUN       = 10
+MAX_FRAME_TO_PLAY = 20000
+NB_TEST_RUN       = 5
 
 # -------------------------------------------------------------------------------------------------
 
@@ -51,6 +51,8 @@ args = dict(result._get_kwargs())
 
 print("Args=", args)
 
+PLAY_WHILE_TRAINING = 0
+
 # -------------------------------------------------------------------------------------------------
 
 init_pygame()
@@ -68,6 +70,28 @@ env = MayhemEnv(game_window,
                 play_recorded=False)
 
 check_env(env)
+
+# -------------------------------------------------------------------------------------------------
+
+def play_model(model_path):
+
+    #pygame.display.set_mode((400, 400))
+
+    if args["algo"] == "A2C":
+        model = A2C.load(model_path, env=env)
+    elif args["algo"] == "PPO":
+        model = PPO.load(model_path, env=env)
+
+    for ep in range(NB_TEST_RUN):
+        obs = env.reset()
+        done = False
+
+        while not done:
+            action, _states = model.predict(obs, deterministic=DETERMINISTIC)
+            obs, rewards, done, info = env.step(action, max_frame=MAX_FRAME_TO_PLAY)
+            env.render(collision_check=False)
+
+    #pygame.display.set_mode((1,1))
 
 # -------------------------------------------------------------------------------------------------
 
@@ -95,13 +119,17 @@ class CustomSaveCallback(BaseCallback):
 
             self.model.save( f"{self.save_path}/{self.num_timesteps}" )
 
-        return True
+            if PLAY_WHILE_TRAINING:
+                play_model(f"{self.save_path}/{self.num_timesteps}")
 
+        return True
 
 # -------------------------------------------------------------------------------------------------
 
 if not args["model_name"]:
-    pygame.display.iconify()
+    #pygame.display.iconify()
+    #pygame.display.set_mode((1,1)) 
+    pass
 
 obs = env.reset()
 

@@ -48,6 +48,8 @@ except ImportError:
 import gym
 from gym import spaces
 
+from stable_baselines3 import A2C, PPO
+
 # -------------------------------------------------------------------------------------------------
 # General
 
@@ -141,20 +143,20 @@ PLATFORMS_1 = [ ( 464, 513, 333 ),
                 ( 499, 586, 1165 ),
                 ( 68, 145, 1181 ) ]
 
-SHIP_1_KEYS = {"left":pygame.K_LEFT, "right":pygame.K_RIGHT, "up":pygame.K_UP, "down":pygame.K_DOWN, \
-               "thrust":pygame.K_KP_PERIOD, "shoot":pygame.K_KP_ENTER, "shield":pygame.K_KP0}
+SHIP_1_INPUT = "HUMAN" # "NETWORK", "AI"
+SHIP_1_KEYS = {"left":pygame.K_LEFT, "right":pygame.K_RIGHT, "thrust":pygame.K_KP_PERIOD, "shoot":pygame.K_KP_ENTER, "shield":pygame.K_KP0}
 SHIP_1_JOY  = 1 # 0 means no joystick, =!0 means joystck number SHIP_1_JOY - 1
 
-SHIP_2_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "up":pygame.K_UP, "down":pygame.K_DOWN, \
-               "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
+SHIP_2_INPUT = "HUMAN" # "NETWORK", "AI"
+SHIP_2_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
 SHIP_2_JOY  = 2 # 0 means no joystick, =!0 means joystck number SHIP_1_JOY - 1
 
-SHIP_3_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "up":pygame.K_UP, "down":pygame.K_DOWN, \
-               "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
+SHIP_3_INPUT = "HUMAN" # "NETWORK", "AI"
+SHIP_3_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
 SHIP_3_JOY  = 0 # 0 means no joystick, =!0 means joystck number SHIP_1_JOY - 1
 
-SHIP_4_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "up":pygame.K_UP, "down":pygame.K_DOWN, \
-               "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
+SHIP_4_INPUT = "HUMAN" # "NETWORK", "AI"
+SHIP_4_KEYS = {"left":pygame.K_w, "right":pygame.K_x, "thrust":pygame.K_v, "shoot":pygame.K_g, "shield":pygame.K_c}
 SHIP_4_JOY  = 0 # 0 means no joystick, =!0 means joystck number SHIP_1_JOY - 1
 
 # -------------------------------------------------------------------------------------------------
@@ -212,7 +214,7 @@ class Shot():
 
 class Ship():
 
-    def __init__(self, mode, screen_width, screen_height, ship_number, nb_player, xpos, ypos, ship_pic, ship_pic_thrust, ship_pic_shield, keys_mapping, joystick_number, lives):
+    def __init__(self, mode, screen_width, screen_height, ship_number, nb_player, xpos, ypos, ship_pic, ship_pic_thrust, ship_pic_shield, lives):
 
         margin_size = 0
         w_percent = 1.0
@@ -280,6 +282,13 @@ class Ship():
         self.sound_shoot  = pygame.mixer.Sound(SOUND_SHOOT)
         self.sound_shield = pygame.mixer.Sound(SOUND_SHIELD)
 
+        # controls
+        self.thrust_pressed = False
+        self.left_pressed   = False
+        self.right_pressed  = False
+        self.shoot_pressed  = False
+        self.shield_pressed = False
+
         # ship pic: 32x32, black (0,0,0) background, no alpha
         self.ship_pic = pygame.image.load(ship_pic).convert()
         self.ship_pic.set_colorkey( (0, 0, 0) ) # used for the mask, black = background, not the ship
@@ -290,9 +299,6 @@ class Ship():
 
         self.image = self.ship_pic
         self.mask = pygame.mask.from_surface(self.image)
-
-        self.keys_mapping = keys_mapping
-        self.joystick_number = joystick_number
 
         self.ray_surface = pygame.Surface((RAY_BOX_SIZE, RAY_BOX_SIZE))
 
@@ -326,6 +332,8 @@ class Ship():
         self.thrust_pressed = False
         self.left_pressed   = False
         self.right_pressed  = False
+        self.shoot_pressed  = False
+        self.shield_pressed = False
 
         self.visited_zones = set()
 
@@ -343,13 +351,12 @@ class Ship():
     def step(self, env, action):
 
         if not env.play_recorded:
+    
+            self.thrust_pressed = False
             self.left_pressed   = False
             self.right_pressed  = False
-            self.thrust_pressed = False
-            up_pressed     = False
-            down_pressed   = False
-            shoot_pressed  = False
-            shield_pressed = False
+            self.shoot_pressed  = False
+            self.shield_pressed = False
 
             if action[0]:
                 self.thrust_pressed = True
@@ -360,7 +367,7 @@ class Ship():
 
             # record play ?
             if env.record_play:
-                env.played_data.append((self.left_pressed, self.right_pressed, self.thrust_pressed, shield_pressed, shoot_pressed))
+                env.played_data.append((self.left_pressed, self.right_pressed, self.thrust_pressed, self.shield_pressed, self.shoot_pressed))
 
         # play recorded
         else:
@@ -370,64 +377,25 @@ class Ship():
                 self.left_pressed   = True if data_i[0] else False
                 self.right_pressed  = True if data_i[1] else False
                 self.thrust_pressed = True if data_i[2] else False
-                shield_pressed = True if data_i[3] else False
-                shoot_pressed  = True if data_i[4] else False
+                self.shield_pressed = True if data_i[3] else False
+                self.shoot_pressed  = True if data_i[4] else False
             except:
                 print("End of playback")
                 print("Frames=", env.frames)
                 print("%s seconds" % int(env.frames/MAX_FPS))
                 sys.exit(0)
 
-        self.do_move(env, self.left_pressed, self.right_pressed, up_pressed, down_pressed, self.thrust_pressed, shoot_pressed, shield_pressed)
+        self.do_move(env)
 
     def update(self, env):
 
         # normal play
         if not env.play_recorded:
-            keys = pygame.key.get_pressed()
-
-            self.left_pressed   = keys[self.keys_mapping["left"]]
-            self.right_pressed  = keys[self.keys_mapping["right"]]
-            up_pressed     = keys[self.keys_mapping["up"]]
-            down_pressed   = keys[self.keys_mapping["down"]]
-            self.thrust_pressed = keys[self.keys_mapping["thrust"]]
-            shoot_pressed  = keys[self.keys_mapping["shoot"]]
-            shield_pressed = keys[self.keys_mapping["shield"]]
-
-            if self.joystick_number:
-                try:
-                    if pygame.joystick.Joystick(self.joystick_number-1).get_button(0):
-                        self.thrust_pressed = True
-                    else:
-                        self.thrust_pressed = False
-
-                    if pygame.joystick.Joystick(self.joystick_number-1).get_button(5):
-                        shoot_pressed = True
-                    else:
-                        shoot_pressed = False
-
-                    if pygame.joystick.Joystick(self.joystick_number-1).get_button(1):
-                        shield_pressed = True
-                    else:
-                        shield_pressed = False
-
-                    horizontal_axis = pygame.joystick.Joystick(self.joystick_number-1).get_axis(0)
-
-                    if int(round(horizontal_axis)) == 1:
-                        self.right_pressed = True
-                    else:
-                        self.right_pressed = False
-
-                    if int(round(horizontal_axis)) == -1:
-                        self.left_pressed = True
-                    else:
-                        self.left_pressed = False
-                except:
-                    pass
+            pass
 
             # record play ?
             if env.record_play:
-                env.played_data.append((self.left_pressed, self.right_pressed, self.thrust_pressed, shield_pressed, shoot_pressed))
+                env.played_data.append((self.left_pressed, self.right_pressed, self.thrust_pressed, self.shield_pressed, self.shoot_pressed))
 
         # play recorded
         else:
@@ -437,11 +405,8 @@ class Ship():
                 self.left_pressed   = True if data_i[0] else False
                 self.right_pressed  = True if data_i[1] else False
                 self.thrust_pressed = True if data_i[2] else False
-                shield_pressed = True if data_i[3] else False
-                shoot_pressed  = True if data_i[4] else False
-
-                up_pressed   = False
-                down_pressed = False
+                self.shield_pressed = True if data_i[3] else False
+                self.shoot_pressed  = True if data_i[4] else False
 
             except:
                 print("End of playback")
@@ -450,14 +415,14 @@ class Ship():
                 sys.exit(0)
 
 
-        self.do_move(env, self.left_pressed, self.right_pressed, up_pressed, down_pressed, self.thrust_pressed, shoot_pressed, shield_pressed)
+        self.do_move(env)
 
-    def do_move(self, env, left_pressed, right_pressed, up_pressed, down_pressed, thrust_pressed, shoot_pressed, shield_pressed):
+    def do_move(self, env):
 
         if env.motion == "basic":
 
             # pic
-            if left_pressed or right_pressed or up_pressed or down_pressed:
+            if self.left_pressed or self.right_pressed:
                 self.image = self.ship_pic_thrust
             else:
                 self.image = self.ship_pic
@@ -465,14 +430,10 @@ class Ship():
             #
             dx = dy = 0
 
-            if left_pressed:
+            if self.left_pressed:
                 dx = -1
-            if right_pressed:
+            if self.right_pressed:
                 dx = 1
-            if up_pressed:
-                dy = -1
-            if down_pressed:
-                dy = 1
 
             self.xpos += dx
             self.ypos += dy
@@ -480,20 +441,20 @@ class Ship():
         elif env.motion == "thrust":
 
             # pic
-            if thrust_pressed:
+            if self.thrust_pressed:
                 self.image = self.ship_pic_thrust
             else:
                 self.image = self.ship_pic
 
             # angle
-            if left_pressed:
+            if self.left_pressed:
                 self.angle += SHIP_ANGLESTEP
-            if right_pressed:
+            if self.right_pressed:
                 self.angle -= SHIP_ANGLESTEP
 
             self.angle = self.angle % 360
 
-            if thrust_pressed:
+            if self.thrust_pressed:
                 coef = 2
                 self.xposprecise -= coef * math.cos( math.radians(90 - self.angle) )
                 self.yposprecise -= coef * math.sin( math.radians(90 - self.angle) )
@@ -509,7 +470,7 @@ class Ship():
             self.shield = False
 
             # shield
-            if shield_pressed:
+            if self.shield_pressed:
                 self.image = self.ship_pic_shield
                 self.shield = True
                 if env.render_game:
@@ -524,7 +485,7 @@ class Ship():
                     self.sound_shield.stop()
 
                 # thrust
-                if thrust_pressed:
+                if self.thrust_pressed:
                     self.image = self.ship_pic_thrust
 
                     #self.thrust += 0.1
@@ -544,13 +505,13 @@ class Ship():
                         self.sound_thrust.stop()
 
             # shoot delay
-            if shoot_pressed and not self.shoot:
+            if self.shoot_pressed and not self.shoot:
                 self.shoot_delay = True
             else:
                 self.shoot_delay = False
 
             # shoot
-            if shoot_pressed:
+            if self.shoot_pressed:
                 self.shoot = True
 
                 if self.shoot_delay:
@@ -570,9 +531,9 @@ class Ship():
 
             if not self.landed:
                 # angle
-                if left_pressed:
+                if self.left_pressed:
                     self.angle += SHIP_ANGLESTEP
-                if right_pressed:
+                if self.right_pressed:
                     self.angle -= SHIP_ANGLESTEP
 
                 # 
@@ -933,16 +894,16 @@ class MayhemEnv(gym.Env):
 
         if self.mode == "game":
             self.ship_1 = Ship(self.mode, self.game.screen_width, self.game.screen_height, 1, self.nb_player, SHIP1_X, SHIP1_Y, \
-                                   SHIP_1_PIC, SHIP_1_PIC_THRUST, SHIP_1_PIC_SHIELD, SHIP_1_KEYS, SHIP_1_JOY, SHIP_MAX_LIVES - self.nb_dead)
+                                   SHIP_1_PIC, SHIP_1_PIC_THRUST, SHIP_1_PIC_SHIELD, SHIP_MAX_LIVES - self.nb_dead)
 
             self.ship_2 = Ship(self.mode, self.game.screen_width, self.game.screen_height, 2, self.nb_player, SHIP2_X, SHIP2_Y, \
-                               SHIP_2_PIC, SHIP_2_PIC_THRUST, SHIP_2_PIC_SHIELD, SHIP_2_KEYS, SHIP_2_JOY, SHIP_MAX_LIVES - self.nb_dead)
+                               SHIP_2_PIC, SHIP_2_PIC_THRUST, SHIP_2_PIC_SHIELD, SHIP_MAX_LIVES - self.nb_dead)
 
             self.ship_3 = Ship(self.mode, self.game.screen_width, self.game.screen_height, 3, self.nb_player, SHIP3_X, SHIP3_Y, \
-                               SHIP_3_PIC, SHIP_3_PIC_THRUST, SHIP_3_PIC_SHIELD, SHIP_3_KEYS, SHIP_3_JOY, SHIP_MAX_LIVES - self.nb_dead)
+                               SHIP_3_PIC, SHIP_3_PIC_THRUST, SHIP_3_PIC_SHIELD, SHIP_MAX_LIVES - self.nb_dead)
 
             self.ship_4 = Ship(self.mode, self.game.screen_width, self.game.screen_height, 4, self.nb_player, SHIP4_X, SHIP4_Y, \
-                               SHIP_4_PIC, SHIP_4_PIC_THRUST, SHIP_4_PIC_SHIELD, SHIP_4_KEYS, SHIP_4_JOY, SHIP_MAX_LIVES - self.nb_dead)
+                               SHIP_4_PIC, SHIP_4_PIC_THRUST, SHIP_4_PIC_SHIELD, SHIP_MAX_LIVES - self.nb_dead)
 
             self.ships.append(self.ship_1)
             
@@ -977,7 +938,14 @@ class MayhemEnv(gym.Env):
 
         if self.mode == "training":
             self.ship_1 = Ship(self.mode, self.game.screen_width, self.game.screen_height, 1, 1, 430, 730, \
-                               SHIP_1_PIC, SHIP_1_PIC_THRUST, SHIP_1_PIC_SHIELD, SHIP_1_KEYS, SHIP_1_JOY, SHIP_MAX_LIVES)
+                               SHIP_1_PIC, SHIP_1_PIC_THRUST, SHIP_1_PIC_SHIELD, SHIP_MAX_LIVES)
+
+        #self.model = PPO.load("/home/tony/Desktop/dev/devpack-github/mayhem-ai/logs/models/PPO/460000.zip", env=self)
+        #self.obs = self.reset()
+
+    def close(self):
+        # TODO pygame cleanup
+        pass
 
     def main_loop(self):
 
@@ -1016,17 +984,79 @@ class MayhemEnv(gym.Env):
             print("%s seconds" % int(self.frames/MAX_FPS))
             sys.exit(0)
 
+    def ship_key_down(self, key, ship, key_mapping):
+
+        # ship_x
+        if key == key_mapping["left"]:
+            ship.left_pressed = True
+        if key == key_mapping["right"]:
+            ship.right_pressed = True
+        if key == key_mapping["thrust"]:
+            ship.thrust_pressed = True
+        if key == key_mapping["shoot"]:
+            ship.shoot_pressed = True
+        if key == key_mapping["shield"]:
+            ship.shield_pressed = True
+
+    def ship_key_up(self, key, ship, key_mapping):
+
+        # ship_x
+        if key == key_mapping["left"]:
+            ship.left_pressed = False
+        if key == key_mapping["right"]:
+            ship.right_pressed = False
+        if key == key_mapping["thrust"]:
+            ship.thrust_pressed = False
+        if key == key_mapping["shoot"]:
+            ship.shoot_pressed = False
+        if key == key_mapping["shield"]:
+            ship.shield_pressed = False
+
+    def ship_joystick(self, ship, joy_mapping):
+
+        if joy_mapping:
+            try:
+                if pygame.joystick.Joystick(joy_mapping-1).get_button(0):
+                    ship.thrust_pressed = True
+                else:
+                    ship.thrust_pressed = False
+
+                if pygame.joystick.Joystick(joy_mapping-1).get_button(5):
+                    ship.shoot_pressed = True
+                else:
+                    ship.shoot_pressed = False
+
+                if pygame.joystick.Joystick(joy_mapping-1).get_button(1):
+                    ship.shield_pressed = True
+                else:
+                    ship.shield_pressed = False
+
+                horizontal_axis = pygame.joystick.Joystick(joy_mapping-1).get_axis(0)
+
+                if int(round(horizontal_axis)) == 1:
+                    ship.right_pressed = True
+                else:
+                    ship.right_pressed = False
+
+                if int(round(horizontal_axis)) == -1:
+                    ship.left_pressed = True
+                else:
+                    ship.left_pressed = False
+            except:
+                pass
+
     def game_loop(self):
 
         # Game Main Loop
         while True:
 
-            # pygame events
+            # -- pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.record_it()
                     sys.exit(0)
 
+                # - key down
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         self.record_it()
@@ -1036,6 +1066,42 @@ class MayhemEnv(gym.Env):
                     elif event.key == pygame.K_DELETE:
                         self.ship_1.explod = True
 
+                    if SHIP_1_INPUT == "HUMAN":
+                        self.ship_key_down(event.key, self.ship_1, SHIP_1_KEYS)
+                    if SHIP_2_INPUT == "HUMAN":
+                        self.ship_key_down(event.key, self.ship_2, SHIP_2_KEYS)
+                    if SHIP_3_INPUT == "HUMAN":
+                        self.ship_key_down(event.key, self.ship_3, SHIP_3_KEYS)
+                    if SHIP_4_INPUT == "HUMAN":
+                        self.ship_key_down(event.key, self.ship_4, SHIP_4_KEYS)
+
+                # - key up
+                elif event.type == pygame.KEYUP:
+
+                    if SHIP_1_INPUT == "HUMAN":
+                        self.ship_key_up(event.key, self.ship_1, SHIP_1_KEYS)
+                    if SHIP_2_INPUT == "HUMAN":
+                        self.ship_key_up(event.key, self.ship_2, SHIP_2_KEYS)
+                    if SHIP_3_INPUT == "HUMAN":
+                        self.ship_key_up(event.key, self.ship_3, SHIP_3_KEYS)
+                    if SHIP_4_INPUT == "HUMAN":
+                        self.ship_key_up(event.key, self.ship_4, SHIP_4_KEYS)
+                        
+            if 0:
+                # Joystick
+                if SHIP_1_JOY and SHIP_1_INPUT == "HUMAN":
+                    self.ship_joystick(self.ship_1, SHIP_1_JOY)
+                if SHIP_2_JOY and SHIP_2_INPUT == "HUMAN":
+                    self.ship_joystick(self.ship_2, SHIP_2_JOY)
+                if SHIP_3_JOY and SHIP_3_INPUT == "HUMAN":
+                    self.ship_joystick(self.ship_3, SHIP_3_JOY)
+                if SHIP_4_JOY and SHIP_4_INPUT == "HUMAN":
+                    self.ship_joystick(self.ship_4, SHIP_4_JOY)
+
+            #action, _states = self.model.predict(self.obs, deterministic=False)
+            #self.obs, rewards, done, info = self.step(action)
+
+            # -- 
             if not self.paused:
 
                 # clear screen
@@ -1360,14 +1426,16 @@ class MayhemEnv(gym.Env):
         if done:
             # visited zone
             self.number_visited_zone = len(self.ship_1.visited_zones)
-            self.reward = self.number_visited_zone * 200
+            self.reward = self.number_visited_zone * 2
 
             if self.number_visited_zone == 1:
-                self.reward = -500
+                self.reward = 0
 
             # if ship exploded => bad reward
             if collision or self.ship_1.explod:
-                self.reward -= 1000
+                self.reward -= 10
+
+        #self.reward = self.reward / 50.
 
         self.frames += 1
 
