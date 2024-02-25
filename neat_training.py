@@ -16,8 +16,8 @@ from matplotlib import pyplot as plt
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-width', '--width', help='', type=int, action="store", default=1200)
-parser.add_argument('-height', '--height', help='', type=int, action="store", default=800)
+parser.add_argument('-width', '--width', help='', type=int, action="store", default=500)
+parser.add_argument('-height', '--height', help='', type=int, action="store", default=500)
 
 result = parser.parse_args()
 args = dict(result._get_kwargs())
@@ -28,7 +28,7 @@ print("Args", args)
 
 init_pygame()
 
-game_window = GameWindow(args["width"], args["height"], MODE, debug_on_screen=0)
+game_window = GameWindow(args["width"], args["height"])
 
 # -------------------------------------------------------------------------------------------------
 
@@ -49,8 +49,8 @@ class NeatTraining():
         #net = neat.nn.RecurrentNetwork.create(g, config)
         net = neat.nn.FeedForwardNetwork.create(g, config)
 
-        neat_env = MayhemEnv(game_window, vsync=True, render_game=True, nb_player=1, mode="training", motion="gravity", sensor=self.input_type, record_play="", play_recorded="")
-        observation = neat_env.reset()
+        neat_env = MayhemEnv(game_window, level=1, max_fps=0, debug_print=1, play_sound=False, motion="gravity", sensor=self.input_type, record_play="", play_recorded="")
+        observation, info = neat_env.reset()
 
         done = False
         while not done:
@@ -59,8 +59,8 @@ class NeatTraining():
 
             act = np.array([action[0]>0.5, action[1]>0.5, action[2]>0.5]).astype(np.int8)
 
-            observation, reward, done, info = neat_env.step(act, max_frame=20000)
-            neat_env.render(collision_check=False)
+            observation, reward, done, truncated, info = neat_env.step(act, max_frame=20000)
+            neat_env.render(max_fps=0, collision_check=False)
 
     def load_net(self, net_name=None):
 
@@ -127,8 +127,9 @@ class NeatTraining():
 
         for runs in range(self.runs_per_net):
 
-            neat_env = MayhemEnv(game_window, vsync=False, render_game=False, nb_player=1, mode="training", motion="gravity", sensor=self.input_type, record_play="", play_recorded="")
-            observation = neat_env.reset()
+            neat_env = MayhemEnv(game_window, level=1, max_fps=0, debug_print=1, play_sound=False, motion="gravity", sensor=self.input_type, record_play="", play_recorded="")
+            
+            observation, info = neat_env.reset()
 
             fitness = 0.0
             done = False
@@ -146,11 +147,11 @@ class NeatTraining():
                 act = np.array([action[0]>0.5, action[1]>0.5, action[2]>0.5]).astype(np.int8)
                 #print(act)
 
-                observation, reward, done, info = neat_env.step(act, max_frame=7000)
+                observation, reward, done, truncated, info = neat_env.step(act, max_frame=2000)
                 
                 if not self.multi:
                     if self.input_type == "ray":
-                        neat_env.render(collision_check=False)
+                        neat_env.render(max_fps=0, collision_check=False)
 
                     elif self.input_type == "pic":
                         sr = neat_env.render(collision_check=True)
@@ -251,7 +252,6 @@ if NEAT_LOAD_WINNER:
 else:
     neat_training.train_it()
 
-
 # Neat on pics input
 if 0:
     env = MayhemEnv(game_window, vsync=0, render_game=False, nb_player=args["nb_player"], mode=args["run_mode"], motion=args["motion"],
@@ -265,7 +265,7 @@ if 0:
 
     if 0:   
         neat_env = MayhemEnv(game_window, vsync=False, render_game=False, nb_player=1, mode="training", motion="gravity", sensor="ray", record_play="", play_recorded="")
-        observation = neat_env.reset()
+        observation, info = neat_env.reset()
 
         fitness = 0.0
         done = False
@@ -275,7 +275,7 @@ if 0:
 
         while not done:
             action = -1
-            observation, reward, done, info = neat_env.step(action, max_frame=4000)
+            observation, reward, done, truncated, info = neat_env.step(action, max_frame=4000)
             sr = neat_env.render(collision_check=False)
             
             if neat_env.game.debug_on_screen:

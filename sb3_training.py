@@ -27,21 +27,23 @@ from mayhem import *
 
 # -------------------------------------------------------------------------------------------------
 
-DETERMINISTIC     = False
-MAX_FRAME_TO_PLAY = 20000
+PLAY_WHILE_TRAINING = 1
+
+DETERMINISTIC     = 1
+MAX_FRAME_TO_PLAY = 10000
 NB_TEST_RUN       = 5
 
 # -------------------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-width', '--width', help='', type=int, action="store", default=1200)
-parser.add_argument('-height', '--height', help='', type=int, action="store", default=800)
+parser.add_argument('-width', '--width', help='', type=int, action="store", default=500)
+parser.add_argument('-height', '--height', help='', type=int, action="store", default=500)
 
 parser.add_argument('-algo', '--algo', help='', action="store", default="PPO", choices=("PPO", "A2C"))
 parser.add_argument('-model_name', '--model_name', help='', action="store", default=None)
 
-parser.add_argument('-timesteps', '--timesteps', help='', type=int, action="store", default=2_000_000)
+parser.add_argument('-timesteps', '--timesteps', help='', type=int, action="store", default=1_000_000)
 parser.add_argument('-save_every', '--save_every', help='', type=int, action="store", default=20_000)
 
 parser.add_argument('-log_dir', '--log_dir', help='', action="store", default="logs")
@@ -51,25 +53,23 @@ args = dict(result._get_kwargs())
 
 print("Args=", args)
 
-PLAY_WHILE_TRAINING = 0
-
 # -------------------------------------------------------------------------------------------------
 
 init_pygame()
 
-game_window = GameWindow(args["width"], args["height"], "training", debug_on_screen=0)
+game_window = GameWindow(args["width"], args["height"])
 
 env = MayhemEnv(game_window, 
-                vsync=False, 
-                render_game=False, 
-                nb_player=1, 
-                mode="training", 
+                level=1,
+                max_fps=0, 
+                debug_print=1,
+                play_sound=False, 
                 motion="gravity",
                 sensor="ray", 
                 record_play=False, 
                 play_recorded=False)
 
-check_env(env)
+#check_env(env)
 
 # -------------------------------------------------------------------------------------------------
 
@@ -83,12 +83,12 @@ def play_model(model_path):
         model = PPO.load(model_path, env=env)
 
     for ep in range(NB_TEST_RUN):
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
 
         while not done:
             action, _states = model.predict(obs, deterministic=DETERMINISTIC)
-            obs, rewards, done, info = env.step(action, max_frame=MAX_FRAME_TO_PLAY)
+            obs, rewards, done, truncated, info = env.step(action, max_frame=MAX_FRAME_TO_PLAY)
             env.render(collision_check=False)
 
     #pygame.display.set_mode((1,1))
@@ -131,7 +131,7 @@ if not args["model_name"]:
     #pygame.display.set_mode((1,1)) 
     pass
 
-obs = env.reset()
+obs, info = env.reset()
 
 # -------------------------------------------------------------------------------------------------
 
@@ -158,10 +158,10 @@ else:
         model = PPO.load(model_path, env=env)
 
     for ep in range(NB_TEST_RUN):
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
 
         while not done:
             action, _states = model.predict(obs, deterministic=DETERMINISTIC)
-            obs, rewards, done, info = env.step(action, max_frame=MAX_FRAME_TO_PLAY)
+            obs, rewards, done, truncated, info = env.step(action, max_frame=MAX_FRAME_TO_PLAY)
             env.render(collision_check=False)

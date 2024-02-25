@@ -18,14 +18,7 @@ reset_on_extinction   = 0
 # 32x32 pic
 #num_inputs              = 1029
 
-# angle + 8 dist
-#num_inputs              = 9
-
-# former_thrust, former_left, former_right, angle vx vy ax ay + 8 dist
-num_inputs              = 16
-
-# thrust angle vx vy ax ay + 8 dist
-#num_inputs              = 14
+num_inputs              = 24
 
 num_hidden              = 2
 num_outputs             = 3
